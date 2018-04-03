@@ -3,7 +3,7 @@ import pandas as pd
 import tensorflow as tf 
 from matplotlib import pyplot as plt
 
-Path = r'SOH_Data.xlsx'
+Path = 'SOH_Data.xlsx'
 
 #训练集
 R1 = pd.read_excel(Path, sheetname=0)
