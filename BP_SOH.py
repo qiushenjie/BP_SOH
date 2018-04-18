@@ -1,95 +1,118 @@
-import numpy as np 
+#电池老化率测定的神经网络模型
+import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
 import pandas as pd
-import tensorflow as tf 
-from matplotlib import pyplot as plt
 
-Path = 'SOH_Data.xlsx'
+path = 'SOH_Data.xlsx'
+#训练集读取及归一化
+xTrainData = pd.read_excel(path, sheetname = 0)
+yTrainData = pd.read_excel(path, sheetname = 1)
+n1 = np.shape(xTrainData)[1]
+x_data = np.array(xTrainData).astype('float32')
+for i in range(n1):
+    x_data[:, i] = (x_data[:, i] - np.amin(x_data[:, i]))/(np.amax(x_data[:, i]) - np.amin(x_data[:, i]))
+y_data = np.array(yTrainData).astype('float32')
+y_data[:] = (y_data[:] - np.amin(y_data[:]))/(np.amax(y_data[:]) - np.amin(y_data[:]))
 
-#训练集
-R1 = pd.read_excel(Path, sheetname=0)
-R2 = pd.read_excel(Path, sheetname=1)
-X_All = np.array(R1)
-Y_All = np.array(R2)
-x_train = X_All.astype('float64')
-y_train = Y_All.astype('float64')
+#测试集读取及归一化
+xTestData = pd.read_excel(path, sheetname = 2)
+yTestData = pd.read_excel(path, sheetname = 3)
+xTest = np.array(xTestData).astype('float32')
+n2 = np.shape(xTrainData)[1]
+xTrain = np.array(xTrainData).astype('float32')
+for i in range(n2):
+    xTest[:, i] = (xTest[:, i] - np.amin(xTest[:, i]))/(np.amax(xTest[:, i]) - np.amin(xTest[:, i]))
+yTest = np.array(yTestData).astype('float32')
+yTest[:] = (yTest[:] - np.amin(yTest[:]))/(np.amax(yTest[:]) - np.amin(yTest[:]))
 
-#测试集
-R3 = pd.read_excel(Path, sheetname=2)
-R4 = pd.read_excel(Path, sheetname=3)
-X_All2 = np.array(R3)
-Y_All2 = np.array(R4)
-x_test = X_All2.astype('float64')
-y_test = Y_All2.astype('float64')
+#参数概要
+def variable_summaries(var):
+    with tf.name_scope('summaries'):
+        mean = tf.reduce_mean(var)#平均值
+        tf.summary.scalar('mean', mean)
+        with tf.name_scope('stddev'):
+            stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+            tf.summary.scalar('stddev', stddev)#标准差
+            tf.summary.scalar('max', tf.reduce_max(var))#最大值
+            tf.summary.scalar('min', tf.reduce_min(var))#最小值
+            tf.summary.histogram('histogram', var)#直方图
 
-# 定义tensorflow的session
-sess = tf.Session()
-X = tf.placeholder(tf.float64, name = 'X_input')
-y_true = tf.placeholder(tf.float64, name = 'y_True')
+#5层神经网络，每层神经元个数
+IHO = [12, 8, 5, 4, 1]
 
-#定义层数及神经元个数
-IHO = [10, 8, 5, 4, 1]
-L_IHO = len(IHO)
+#命名空间
+with tf.name_scope('input'):
+    #定义两个placeholder
+    x = tf.placeholder(tf.float32, [None, 12], name = 'xInput')
+    y = tf.placeholder(tf.float32, [None, 1], name = 'y')
 
-#初始化权重、偏置
-Weight = []
-for i in range(0, L_IHO - 1):
-	Weight.append(tf.Variable(tf.zeros([IHO[i], IHO[i + 1]], tf.float64), name = 'Weight_%d'%(i + 1)))
-Bias = []
-for i in range(0, L_IHO - 1):
-	Bias.append(tf.Variable(tf.zeros([IHO[i + 1]], tf.float64), name = 'Bais_%d'%(i + 1)))
+#神经元中间层
+with tf.name_scope('layer'):
+    with tf.name_scope('weights_L1'):
+        Weight_L1 = tf.Variable(tf.random_normal([12, 8]), name = 'W1')
+        variable_summaries(Weight_L1)
+    with tf.name_scope('bias_L1'):
+        biases_L1 = tf.Variable(tf.zeros([8]), name = 'b1')
+        variable_summaries(biases_L1)
+    with tf.name_scope('L_1'):
+        Wx_plus_b_L1 = tf.matmul(x, Weight_L1) + biases_L1
+        L1 = tf.nn.tanh(Wx_plus_b_L1)
 
-#定义神经网络每层的运算方式： 运算=（输入*权重+偏置），再做非线性转换（sigmoid）
-y_in = [] #模型输入
-y_out = [] #模型输出
-for i in range(0, L_IHO - 1): 
-#模型算法， function部分
-	if i == 0:
-		y_in.append(tf.add(tf.matmul(X, Weight[i]), Bias[i], name ='y_input_%d'%(i + 1)))
-		y_out.append(tf.sigmoid(y_in[i], name = 'y_output_%d'%(i + 1)))
-	else:
-		y_in.append(tf.add(tf.matmul(y_out[i - 1], Weight[i]), Bias[i], name ='y_input_%d'%(i + 1)))
-		y_out.append(tf.sigmoid(y_in[i], name = 'y_output_%d'%(i + 1)))
-y = y_out[-1] #取输出的最后一个元素
+    with tf.name_scope('weights_L2'):
+        Weight_L2 = tf.Variable(tf.random_normal([8, 5]), name = 'W2')
+        variable_summaries(Weight_L2)
+    with tf.name_scope('bias_L2'):
+        biases_L2 = tf.Variable(tf.zeros([5]), name = 'b2')
+        variable_summaries(biases_L2)
+    with tf.name_scope('L_2'):
+        Wx_plus_b_L2 = tf.matmul(L1, Weight_L2) + biases_L2
+        L2 = tf.nn.tanh(Wx_plus_b_L2)
 
-#定义损失函数，求损失
-loss = tf.reduce_sum(tf.square(y - y_true), name = 'loss')
+    with tf.name_scope('weights_L3'):
+        Weight_L3 = tf.Variable(tf.random_normal([5, 4]), name = 'W3')
+        variable_summaries(Weight_L3)
+    with tf.name_scope('bias_L3'):  
+        biases_L3 = tf.Variable(tf.zeros([4]), name = 'b3')
+        variable_summaries(biases_L3)
+    with tf.name_scope('L_3'):
+        Wx_plus_b_L3 = tf.matmul(L2, Weight_L3) + biases_L3
+        L3 = tf.nn.tanh(Wx_plus_b_L3)
+#神经元输出层
+    with tf.name_scope('weights_L4'):
+        Weight_L4 = tf.Variable(tf.random_normal([4, 1]), name = 'W4')
+        variable_summaries(Weight_L4)
+    with tf.name_scope('bias_L4'):
+        biases_L4 = tf.Variable(tf.zeros([1]), name = 'b4')
+        variable_summaries(biases_L4)
+    with tf.name_scope('prediction'):
+        Wx_plus_b_L4 = tf.matmul(L3, Weight_L4) + biases_L4
+        prediction = tf.nn.tanh(Wx_plus_b_L4)
 
-#构建优化器，最小化损失函数
-train_step = tf.train.GradientDescentOptimizer(0.01).minimize(loss) #定义训练模式为最小损失值，学习率为0.01
+#二次代价函数
+with tf.name_scope('loss'):
+    loss = tf.reduce_mean(tf.square(y - prediction), name = 'loss')
+    tf.summary.scalar('loss', loss)
+#使用梯度下降法训练
+with tf.name_scope('train'):
+    train_step = tf.train.GradientDescentOptimizer(0.01).minimize(loss)
 
-#初始化整个网络
-init = tf.global_variables_initializer() #初始化所有符号共享变量
-sess = tf.Session()#构建会话
-sess.run(init) #运行会话
-
-#训练神经网络
-Y = []
-Loss = []
-#循环2000次
-for i in range(0, 200):
-	sess.run(train_step, feed_dict = {X:x_train, y_true:y_train})
-	if(i + 1)%100 == 0:
-		curr_loss = sess.run(loss, feed_dict = {X:x_train, y_true:y_train})
-		print('%4d:'%(i + 1), "loss:%s\n"%curr_loss)
-		Y.append(sess.run(y_out, feed_dict = {X:x_train, y_true:y_train}))
-	Loss.append([i, sess.run(loss, feed_dict = {X:x_train, y_true:y_train})])
-
-
-#绘制模型输出的数据图表
-W = sess.run(Weight, feed_dict = {X:x_train, y_true:y_train})
-Y_Output = sess.run(y, feed_dict = {X:x_train, y_true:y_train})
-Loss = np.array(Loss)
-plt.plot(Loss[:, 0], Loss[:, 1])
-plt.show()
-
-#对测试集进行测定，并最小化均方差
-correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_true, 1))
-accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
-print(sess.run(accuracy, feed_dict = {X:x_test, y_true:y_test}))
-
-
-
-
-
-
-
+#合并所有summary
+merged = tf.summary.merge_all()
+with tf.Session() as sess:
+    #变量初始化
+    sess.run(tf.global_variables_initializer())
+    writer = tf.summary.FileWriter('logs/', sess.graph)
+    for i in range(10000):
+        summary, _ = sess.run([merged, train_step], feed_dict = {x: x_data, y: y_data})
+        writer.add_summary(summary, i)
+        curr_loss = sess.run(loss, feed_dict = {x: x_data, y: y_data})
+        if (i + 1)%100 == 0:
+            print('第%d次迭代loss:'%(i + 1), curr_loss)
+    #训练集预测集
+    prediction_value = sess.run(prediction, feed_dict = {x: x_data})
+    #测试集预测集
+    prediction_value_test = sess.run(prediction, feed_dict = {x: xTest})
+    test_loss = sess.run(loss, feed_dict = {x: xTest, y: yTest})
+    print('测试误差：', test_loss)
+    print(prediction_value_test)
